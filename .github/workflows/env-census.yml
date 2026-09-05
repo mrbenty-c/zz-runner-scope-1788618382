@@ -1,0 +1,17 @@
+name: Action launch endpoint env census
+on: workflow_dispatch
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const keys = Object.keys(process.env).sort()
+            const names = keys.filter(k => /launch|system|runtime|result|orchestration|request/i.test(k))
+            core.info(`MATCHING_ENV_KEYS=${JSON.stringify(names)}`)
+            core.info(`ACTIONS_RUNTIME_URL_PRESENT=${!!process.env.ACTIONS_RUNTIME_URL}`)
+            core.info(`ACTIONS_RUNTIME_TOKEN_PRESENT=${!!process.env.ACTIONS_RUNTIME_TOKEN}`)
+            core.info(`ACTIONS_RESULTS_URL_PRESENT=${!!process.env.ACTIONS_RESULTS_URL}`)
+            core.info(`ACTIONS_ORCHESTRATION_ID_PRESENT=${!!process.env.ACTIONS_ORCHESTRATION_ID}`)
+            core.info(`LAUNCH_NAMED_KEYS=${JSON.stringify(keys.filter(k => /launch/i.test(k)))}`)
