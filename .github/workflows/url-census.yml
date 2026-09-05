@@ -1,0 +1,15 @@
+name: Action runtime URL shape census
+on: workflow_dispatch
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            for (const k of ['ACTIONS_RUNTIME_URL','ACTIONS_RESULTS_URL','ACTIONS_CACHE_URL','ACTIONS_ID_TOKEN_REQUEST_URL']) {
+              const v=process.env[k]
+              if (!v) { core.info(`${k}=ABSENT`); continue }
+              const u=new URL(v)
+              core.info(`${k}: origin=${u.origin} path_segments=${u.pathname.split('/').filter(Boolean).map(x=>x.length).join(',')} ends_slash=${u.pathname.endsWith('/')}`)
+            }
